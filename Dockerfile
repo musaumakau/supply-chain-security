@@ -44,6 +44,11 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application source
 COPY app/ .
 
+# Remove perl to remediate CVE-2026-42496 and CVE-2026-8376
+# perl-base is inherited from debian but unused in a python app
+RUN apt-get purge -y --auto-remove perl perl-base \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user and drop privileges
 RUN addgroup --system appgroup \
     && adduser --system --ingroup appgroup --no-create-home appuser \
