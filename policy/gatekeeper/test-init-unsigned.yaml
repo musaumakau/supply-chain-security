@@ -7,6 +7,12 @@ spec:
   initContainers:
     - name: unsigned-init
       image: 5936/supply-chain-demo:unsigned-test
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
   containers:
     - name: signed-main
       image: 5936/supply-chain-demo:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
