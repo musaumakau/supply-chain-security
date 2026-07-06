@@ -34,6 +34,24 @@ jobs:
             --output semgrep.sarif \
             .
 
+      - name: Print findings to log
+        if: always()
+        run: |
+          apk add --no-cache jq
+          jq -r '
+            .runs[].results[] |
+            "▶ \(.ruleId)\n  \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)\n  \(.message.text)\n"
+          ' semgrep.sarif
+
+      - name: Print findings to summary
+        if: always()
+        run: |
+          echo "## Semgrep Findings" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '
+            .runs[].results[] |
+            "- **\(.ruleId)** — `\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)`\n  \(.message.text)"
+          ' semgrep.sarif >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload SARIF to GitHub Security tab
         if: always()
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
