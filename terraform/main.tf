@@ -46,7 +46,7 @@ resource "github_repository_ruleset" "main_protection" {
     non_fast_forward = true
 
     required_status_checks {
-      #Require the canonical GitHub Actions job names returned by the
+      # Require the canonical GitHub Actions job names returned by the
       # GitHub Rulesets API. These match the identifiers GitHub currently
       # enforces for required checks and include the GitHub Actions
       # integration ID to ensure the checks originate from the expected
@@ -71,4 +71,5 @@ resource "github_repository_ruleset" "main_protection" {
       strict_required_status_checks_policy = false
     }
   }
+}
 }
