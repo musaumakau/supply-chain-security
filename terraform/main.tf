@@ -46,7 +46,7 @@ resource "github_repository_ruleset" "main_protection" {
     non_fast_forward = true
 
     required_status_checks {
-      # Require the canonical GitHub Actions job names as returned by the
+    # Require the canonical GitHub Actions job names as returned by the
     # Rulesets API (short context, not the full "Workflow / Job (event)"
     # path shown on the PR page -- that mismatch caused a stuck, silently
     # unsatisfiable required check earlier). integration_id pins each check
