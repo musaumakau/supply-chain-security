@@ -23,4 +23,6 @@ runs:
 
     - name: Configure Docker for Artifact Registry
       shell: bash
-      run: gcloud auth configure-docker "${{ inputs.registry }}" --quiet
+      env:
+        REGISTRY: ${{ inputs.registry }}
+      run: gcloud auth configure-docker "$REGISTRY" --quiet
