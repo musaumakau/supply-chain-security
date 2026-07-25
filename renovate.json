@@ -67,7 +67,8 @@
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["python"],
       "matchUpdateTypes": ["major", "minor"],
-      "enabled": false
+      "enabled": false,
+      "minimumReleaseAge": false
     },
     {
       "description": "Terraform GCP provider updates",
