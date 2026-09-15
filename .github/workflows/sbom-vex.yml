@@ -28,8 +28,6 @@ jobs:
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
       - name: Upload SBOM to Dependency-Track
-        # autoCreate=true creates the project on first push, no manual setup needed.
-        # Non-blocking: DT being unreachable does not fail the pipeline.
         if: always()
         continue-on-error: true
         run: |
@@ -49,8 +47,6 @@ jobs:
         env:
           DT_URL: ${{ secrets.DT_URL }}
           DT_API_KEY: ${{ secrets.DT_API_KEY }}
-
-
       - name: Upload SBOM and reachability report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
