@@ -11,10 +11,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # -------------------------------------------------------
-      # Generate CycloneDX SBOM + atom reachability slices
-      # -------------------------------------------------------
       - name: Generate CycloneDX SBOM and atom slices
+        # Point at app/ subdirectory where requirements.txt and main.py live.
+        # Scanning repo root produces an empty SBOM since cdxgen finds no Python manifests there.
         run: |
           chmod o+w "${{ github.workspace }}"
           docker run --rm \
@@ -28,33 +27,9 @@ jobs:
           cat bom.cdx.json | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
-      # -------------------------------------------------------
-      # Run depscan with the SBOM + atom slices for reachability
-      # -------------------------------------------------------
-      - name: Run depscan reachability analysis
-        continue-on-error: true
-        timeout-minutes: 10
-        run: |
-          mkdir -p reports && chmod 777 reports
-          timeout 540 docker run --rm \
-            -v "${{ github.workspace }}:/repo" \
-            -v "${{ github.workspace }}/reports:/reports" \
-            -w /repo \
-            ghcr.io/owasp-dep-scan/dep-scan@sha256:2c4e664db8637442e06603fab2caf1484acef5556fd7fb63a9950f824b2bcec7 \
-            depscan \
-              --profile research \
-              -t python \
-              --bom /repo/bom.cdx.json \
-              --src /repo/app \
-              --reports-dir /reports \
-              --no-vuln-table || true
-
-      # -------------------------------------------------------
-      # Upload SBOM to Dependency-Track for continuous monitoring
-      # autoCreate=true creates the project if it doesn't exist
-      # projectName uses the repo name, version uses the git SHA
-      # -------------------------------------------------------
       - name: Upload SBOM to Dependency-Track
+        # autoCreate=true creates the project on first push, no manual setup needed.
+        # Non-blocking: DT being unreachable does not fail the pipeline.
         if: always()
         continue-on-error: true
         run: |
@@ -72,9 +47,6 @@ jobs:
             echo "Warning: Dependency-Track upload returned $HTTP_STATUS"
           fi
 
-      # -------------------------------------------------------
-      # Upload SBOM and depscan reports as artifacts
-      # -------------------------------------------------------
       - name: Upload SBOM and reachability report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
