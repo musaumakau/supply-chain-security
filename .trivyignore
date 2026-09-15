@@ -86,3 +86,29 @@ CVE-2026-57433
 # Same package and same reasoning as CVE-2026-13221 -- no Perl invocation
 # anywhere in this app, inherited from base image only, code path unreachable.
 CVE-2026-57432
+
+# CVE-2026-33634, CVE-2026-34886, CVE-2026-37965, CVE-2026-39251:
+# util-linux bind mount, X-mount.subdir, nsenter, and mount helper CVEs.
+# All require direct invocation of mount/nsenter/umount utilities or
+# privileged mount namespace operations. App (app/main.py) is a FastAPI/
+# uvicorn HTTP service with three static routes -- no mount operations,
+# no namespace manipulation, no privileged syscalls of any kind.
+# util-linux is a transitive base image dependency only, code path unreachable.
+CVE-2026-33634
+CVE-2026-34886
+CVE-2026-37965
+CVE-2026-39251
+
+# CVE-2026-44691: systemd-homed local privilege escalation via missing
+# home-record signature verification. App runs as a non-root container
+# (uid 1000) with no systemd, no PAM, and no home-record management.
+# systemd is present only as a base Debian package dependency,
+# never invoked at runtime. Code path unreachable.
+CVE-2026-44691
+
+# CVE-2026-35984, CVE-2026-35985: PCRE2 memory corruption and out-of-bounds
+# write in JIT compiler. App (app/main.py) uses Python's built-in re module
+# (which uses a different regex engine) and never calls libpcre2 directly.
+# pcre2 is a transitive base image dependency only, code path unreachable.
+CVE-2026-35984
+CVE-2026-35985
