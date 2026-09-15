@@ -1,11 +1,8 @@
 name: SBOM and VEX
-
 on:
   workflow_call:
-
 permissions:
   contents: read
-
 jobs:
   cdxgen:
     name: CycloneDX SBOM + Reachability (depscan)
@@ -16,9 +13,6 @@ jobs:
 
       # -------------------------------------------------------
       # Generate CycloneDX SBOM + atom reachability slices
-      # Point at app/ subdirectory where requirements.txt and
-      # main.py actually live -- scanning repo root produces an
-      # empty SBOM since cdxgen finds no Python manifests there.
       # -------------------------------------------------------
       - name: Generate CycloneDX SBOM and atom slices
         run: |
@@ -36,7 +30,6 @@ jobs:
 
       # -------------------------------------------------------
       # Run depscan with the SBOM + atom slices for reachability
-      # --profile research enables reachability analysis via atom
       # -------------------------------------------------------
       - name: Run depscan reachability analysis
         continue-on-error: true
@@ -55,6 +48,28 @@ jobs:
               --src /repo/app \
               --reports-dir /reports \
               --no-vuln-table || true
+
+      # -------------------------------------------------------
+      # Upload SBOM to Dependency-Track for continuous monitoring
+      # autoCreate=true creates the project if it doesn't exist
+      # projectName uses the repo name, version uses the git SHA
+      # -------------------------------------------------------
+      - name: Upload SBOM to Dependency-Track
+        continue-on-error: true
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/dt-response.json -w "%{http_code}" \
+            -X POST "${{ secrets.DT_URL }}/api/v1/bom" \
+            -H "X-Api-Key: ${{ secrets.DT_API_KEY }}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "autoCreate=true" \
+            -F "projectName=${{ github.repository }}" \
+            -F "projectVersion=${{ github.sha }}" \
+            -F "bom=@bom.cdx.json")
+          echo "Dependency-Track response: $HTTP_STATUS"
+          cat /tmp/dt-response.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Warning: Dependency-Track upload returned $HTTP_STATUS"
+          fi
 
       # -------------------------------------------------------
       # Upload SBOM and depscan reports as artifacts
