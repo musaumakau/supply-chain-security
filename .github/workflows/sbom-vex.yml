@@ -28,6 +28,8 @@ jobs:
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
       - name: Upload SBOM to Dependency-Track
+        # autoCreate=true creates the project on first push, no manual setup needed.
+        # Non-blocking: DT being unreachable does not fail the pipeline.
         if: always()
         continue-on-error: true
         run: |
