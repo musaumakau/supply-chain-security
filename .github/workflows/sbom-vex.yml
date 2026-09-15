@@ -33,20 +33,18 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          HTTP_STATUS=$(curl -s -o /tmp/dt-response.json -w "%{http_code}" \
+          echo "DT URL: ${{ secrets.DT_URL }}"
+          HTTP_STATUS=$(curl -v -s -o /tmp/dt-response.json -w "%{http_code}" \
+            --max-time 30 \
             -X POST "${{ secrets.DT_URL }}/api/v1/bom" \
             -H "X-Api-Key: ${{ secrets.DT_API_KEY }}" \
             -H "Content-Type: multipart/form-data" \
             -F "autoCreate=true" \
             -F "projectName=${{ github.repository }}" \
             -F "projectVersion=${{ github.sha }}" \
-            -F "bom=@bom.cdx.json")
-          echo "Dependency-Track response: $HTTP_STATUS"
-          cat /tmp/dt-response.json
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "Warning: Dependency-Track upload returned $HTTP_STATUS"
-          fi
-
+            -F "bom=@bom.cdx.json") || true
+          echo "HTTP status: $HTTP_STATUS"
+          cat /tmp/dt-response.json || true
       - name: Upload SBOM and reachability report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
