@@ -36,7 +36,7 @@ jobs:
         timeout-minutes: 10
         run: |
           mkdir -p reports && chmod 777 reports
-          docker run --rm \
+          timeout 540 docker run --rm \
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
@@ -55,6 +55,7 @@ jobs:
       # projectName uses the repo name, version uses the git SHA
       # -------------------------------------------------------
       - name: Upload SBOM to Dependency-Track
+        if: always()
         continue-on-error: true
         run: |
           HTTP_STATUS=$(curl -s -o /tmp/dt-response.json -w "%{http_code}" \
