@@ -112,3 +112,49 @@ CVE-2026-44691
 # pcre2 is a transitive base image dependency only, code path unreachable.
 CVE-2026-35984
 CVE-2026-35985
+
+# CVE-2025-47273: setuptools path traversal via PackageIndex. Only exploitable
+# when setuptools downloads packages from a malicious index at install time.
+# App runs a pre-built image with no pip install at runtime -- setuptools is
+# present only as a build-time dependency, not invoked at runtime.
+CVE-2025-47273
+
+# CVE-2026-11822, CVE-2026-11824: SQLite FTS5 arbitrary code execution and
+# heap buffer overflow. App (app/main.py) contains no database access, no SQL,
+# and no sqlite3 usage of any kind -- three static FastAPI routes only.
+# sqlite3 is a transitive base image dependency, code path unreachable.
+CVE-2026-11822
+CVE-2026-11824
+
+# CVE-2026-16742: systemd-homed local privilege escalation via missing
+# home-record signature verification. App runs as a non-root container
+# (uid 1000) with no systemd, no PAM, and no home-record management.
+# systemd is a transitive base image dependency never invoked at runtime.
+CVE-2026-16742
+
+# CVE-2026-53613: util-linux TOCTOU in mount via ancestor directory swap.
+# CVE-2026-76642: util-linux failed external mount helper runs privileged post-hooks.
+# CVE-2026-78408: util-linux nsenter leaks root cgroup migration authority.
+# CVE-2026-78409: util-linux X-mount.subdir detached-tree symlink escape.
+# CVE-2026-78410: util-linux restricted bind mounts source pinning bypass.
+# All require direct invocation of mount/umount/nsenter utilities or privileged
+# mount namespace operations. App is a FastAPI/uvicorn HTTP service with three
+# static routes -- no mount operations, no namespace manipulation of any kind.
+# util-linux is a transitive base image dependency, code path unreachable.
+CVE-2026-53613
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+
+# CVE-2026-86145, CVE-2026-89161: PCRE2 out-of-bounds write and JIT memory
+# corruption via crafted regular expressions. App uses Python's built-in re
+# module which does not use libpcre2. pcre2 is a transitive base image
+# dependency never called by this app at runtime.
+CVE-2026-86145
+CVE-2026-89161
+
+# GHSA-6v7p-g79w-8964: MessagePack for Python out-of-bounds read on Unpacker
+# reuse after a caught error. App does not use MessagePack or any binary
+# serialization -- three static FastAPI routes returning plain JSON only.
+GHSA-6v7p-g79w-8964
