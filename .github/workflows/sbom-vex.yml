@@ -32,10 +32,10 @@ jobs:
           cat bom.cdx.json | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
+      
       - name: Run depscan vulnerability scan
         # Fast scan without reachability. Produces findings immediately.
         # Non-blocking so new CVEs don't fail the pipeline before triage.
-        # Uses v5 tag to avoid depscan v6 breaking changes around --bom + --src handling.
         if: always()
         continue-on-error: true
         timeout-minutes: 5
@@ -45,7 +45,7 @@ jobs:
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
-            ghcr.io/owasp-dep-scan/dep-scan:v5 \
+            ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
             depscan \
               -t python \
               --src /repo/app \
@@ -54,8 +54,7 @@ jobs:
               --no-vuln-table || true
 
       - name: Run depscan reachability analysis
-        # Atom-based reachability. Runs independently of the fast scan result.
-        # if: always() ensures this runs even when the fast scan times out or crashes.
+        # Atom-based reachability. Runs independently of fast scan result.
         if: always()
         continue-on-error: true
         timeout-minutes: 10
@@ -64,7 +63,7 @@ jobs:
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
-            ghcr.io/owasp-dep-scan/dep-scan:v5 \
+            ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
             depscan \
               --profile research \
               -t python \
@@ -72,7 +71,6 @@ jobs:
               --bom /repo/bom.cdx.json \
               --reports-dir /reports \
               --no-vuln-table || true
-
       - name: Upload SBOM to Dependency-Track
         # autoCreate=true creates the project on first push, no manual setup needed.
         # Non-blocking: DT being unreachable does not fail the pipeline.
