@@ -27,6 +27,7 @@ jobs:
           cat bom.cdx.json | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
+      
       - name: Upload SBOM to Dependency-Track
         if: always()
         continue-on-error: true
