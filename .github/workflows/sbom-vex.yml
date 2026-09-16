@@ -33,8 +33,10 @@ jobs:
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
       - name: Run depscan vulnerability scan
-        # Fast scan without reachability analysis. Produces findings immediately.
+        # Fast scan without reachability. Produces findings immediately.
         # Non-blocking so new CVEs don't fail the pipeline before triage.
+        # Uses v5 tag to avoid depscan v6 breaking changes around --bom + --src handling.
+        if: always()
         continue-on-error: true
         timeout-minutes: 5
         run: |
@@ -43,17 +45,18 @@ jobs:
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
-            ghcr.io/owasp-dep-scan/dep-scan@sha256:2c4e664db8637442e06603fab2caf1484acef5556fd7fb63a9950f824b2bcec7 \
+            ghcr.io/owasp-dep-scan/dep-scan:v5 \
             depscan \
               -t python \
-              --bom /repo/bom.cdx.json \
               --src /repo/app \
+              --bom /repo/bom.cdx.json \
               --reports-dir /reports \
               --no-vuln-table || true
 
       - name: Run depscan reachability analysis
-        # Slow atom-based reachability. Runs after the fast scan so findings
-        # are always produced even if this step hangs and times out.
+        # Atom-based reachability. Runs independently of the fast scan result.
+        # if: always() ensures this runs even when the fast scan times out or crashes.
+        if: always()
         continue-on-error: true
         timeout-minutes: 10
         run: |
@@ -61,12 +64,12 @@ jobs:
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
-            ghcr.io/owasp-dep-scan/dep-scan@sha256:2c4e664db8637442e06603fab2caf1484acef5556fd7fb63a9950f824b2bcec7 \
+            ghcr.io/owasp-dep-scan/dep-scan:v5 \
             depscan \
               --profile research \
               -t python \
-              --bom /repo/bom.cdx.json \
               --src /repo/app \
+              --bom /repo/bom.cdx.json \
               --reports-dir /reports \
               --no-vuln-table || true
 
