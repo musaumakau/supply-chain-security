@@ -45,6 +45,8 @@ jobs:
     name: SBOM and VEX (non-blocking)
     if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
     uses: ./.github/workflows/sbom-vex.yml
+    secrets: inherit
+      
 
   sign-attest:
     name: Sign and Attest
