@@ -46,7 +46,6 @@ jobs:
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
             ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
-            depscan \
               -t python \
               --src /repo/app \
               --bom /repo/bom.cdx.json \
@@ -64,7 +63,6 @@ jobs:
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
             ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
-            depscan \
               --profile research \
               -t python \
               --src /repo/app \
