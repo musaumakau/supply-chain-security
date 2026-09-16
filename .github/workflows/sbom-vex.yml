@@ -32,14 +32,51 @@ jobs:
           cat bom.cdx.json | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
-      
+      - name: Run depscan vulnerability scan
+        # Fast scan without reachability analysis. Produces findings immediately.
+        # Non-blocking so new CVEs don't fail the pipeline before triage.
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          mkdir -p reports && chmod 777 reports
+          timeout 240 docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            -v "${{ github.workspace }}/reports:/reports" \
+            -w /repo \
+            ghcr.io/owasp-dep-scan/dep-scan@sha256:2c4e664db8637442e06603fab2caf1484acef5556fd7fb63a9950f824b2bcec7 \
+            depscan \
+              -t python \
+              --bom /repo/bom.cdx.json \
+              --src /repo/app \
+              --reports-dir /reports \
+              --no-vuln-table || true
+
+      - name: Run depscan reachability analysis
+        # Slow atom-based reachability. Runs after the fast scan so findings
+        # are always produced even if this step hangs and times out.
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          timeout 540 docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            -v "${{ github.workspace }}/reports:/reports" \
+            -w /repo \
+            ghcr.io/owasp-dep-scan/dep-scan@sha256:2c4e664db8637442e06603fab2caf1484acef5556fd7fb63a9950f824b2bcec7 \
+            depscan \
+              --profile research \
+              -t python \
+              --bom /repo/bom.cdx.json \
+              --src /repo/app \
+              --reports-dir /reports \
+              --no-vuln-table || true
+
       - name: Upload SBOM to Dependency-Track
+        # autoCreate=true creates the project on first push, no manual setup needed.
+        # Non-blocking: DT being unreachable does not fail the pipeline.
         if: always()
         continue-on-error: true
         run: |
-          echo "DT_URL length: ${#DT_URL}"
-          echo "DT_URL first char: ${DT_URL:0:4}"
-          HTTP_STATUS=$(curl -v -s -o /tmp/dt-response.json -w "%{http_code}" \
+          HTTP_STATUS=$(curl -s -o /tmp/dt-response.json -w "%{http_code}" \
             --max-time 30 \
             -X POST "${DT_URL}/api/v1/bom" \
             -H "X-Api-Key: ${DT_API_KEY}" \
@@ -47,12 +84,16 @@ jobs:
             -F "autoCreate=true" \
             -F "projectName=${{ github.repository }}" \
             -F "projectVersion=${{ github.sha }}" \
-            -F "bom=@bom.cdx.json") || true
-          echo "HTTP status: $HTTP_STATUS"
+            -F "bom=@bom.cdx.json")
+          echo "Dependency-Track response: $HTTP_STATUS"
           cat /tmp/dt-response.json || true
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Warning: Dependency-Track upload returned $HTTP_STATUS"
+          fi
         env:
           DT_URL: ${{ secrets.DT_URL }}
           DT_API_KEY: ${{ secrets.DT_API_KEY }}
+
       - name: Upload SBOM and reachability report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
