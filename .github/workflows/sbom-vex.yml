@@ -1,6 +1,11 @@
 name: SBOM and VEX
 on:
   workflow_call:
+    secrets:
+      DT_URL:
+        required: true
+      DT_API_KEY:
+        required: true
 permissions:
   contents: read
 jobs:

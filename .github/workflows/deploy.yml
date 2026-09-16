@@ -45,6 +45,10 @@ jobs:
     name: SBOM and VEX (non-blocking)
     if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
     uses: ./.github/workflows/sbom-vex.yml
+    secrets: 
+      DT_URL: ${{ secrets.DT_URL }}
+      DT_API_KEY: ${{ secrets.DT_API_KEY }}
+      
 
   sign-attest:
     name: Sign and Attest
