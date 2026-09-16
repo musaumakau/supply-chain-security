@@ -33,17 +33,25 @@ jobs:
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
       
+      - name: Cache depscan vulnerability database
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: /tmp/vdb
+          key: depscan-vdb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            depscan-vdb-${{ runner.os }}-
+
       - name: Run depscan vulnerability scan
-        # Fast scan without reachability. Produces findings immediately.
-        # Non-blocking so new CVEs don't fail the pipeline before triage.
         if: always()
         continue-on-error: true
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
-          mkdir -p reports && chmod 777 reports
-          timeout 240 docker run --rm \
+          mkdir -p reports && chmod 777 reports /tmp/vdb
+          timeout 420 docker run --rm \
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
+            -v /tmp/vdb:/vdb \
+            -e VDB_HOME=/vdb \
             -w /repo \
             ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
               -t python \
@@ -53,7 +61,6 @@ jobs:
               --no-vuln-table || true
 
       - name: Run depscan reachability analysis
-        # Atom-based reachability. Runs independently of fast scan result.
         if: always()
         continue-on-error: true
         timeout-minutes: 10
@@ -61,6 +68,8 @@ jobs:
           timeout 540 docker run --rm \
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
+            -v /tmp/vdb:/vdb \
+            -e VDB_HOME=/vdb \
             -w /repo \
             ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
               --profile research \
