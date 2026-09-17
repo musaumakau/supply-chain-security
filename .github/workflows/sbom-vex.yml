@@ -46,7 +46,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 8
         run: |
-          mkdir -p reports && chmod 777 reports /tmp/vdb
+          mkdir -p reports /tmp/vdb && chmod 777 reports /tmp/vdb
           timeout 420 docker run --rm \
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
