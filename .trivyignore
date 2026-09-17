@@ -158,3 +158,10 @@ CVE-2026-89161
 # reuse after a caught error. App does not use MessagePack or any binary
 # serialization -- three static FastAPI routes returning plain JSON only.
 GHSA-6v7p-g79w-8964
+
+# CVE-2026-89157: PCRE2 out-of-bounds write via large pattern input.
+# Fixed in 10.42-1+deb12u1 but python:3.12-slim-bookworm still ships 10.42-1.
+# App uses Python's built-in re module which does not call libpcre2 directly.
+# pcre2 is a transitive base image dependency only, code path unreachable.
+# Tracking: update base image digest once upstream patch lands.
+CVE-2026-89157
