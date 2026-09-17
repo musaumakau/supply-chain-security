@@ -16,29 +16,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set cache week
+        id: date
+        run: echo "week=$(date +%Y-%U)" >> "$GITHUB_OUTPUT"
+
       - name: Generate CycloneDX SBOM and atom slices
         # Point at app/ subdirectory where requirements.txt and main.py live.
         # Scanning repo root produces an empty SBOM since cdxgen finds no Python manifests there.
         run: |
-          chmod o+w "${{ github.workspace }}"
-          docker run --rm \
+          mkdir -p bom-out
+          chmod 777 bom-out
+          docker run --rm --init \
             -v "${{ github.workspace }}:/repo" \
+            -v "${{ github.workspace }}/bom-out:/out" \
             -w /repo \
             ghcr.io/cyclonedx/cdxgen@sha256:29babac410b88a53c8fa60038b1b9a5c26764ccb84942ca77863acf90c86e288 \
             -t python --deep --evidence \
-            -o /repo/bom.cdx.json \
+            -o /out/bom.cdx.json \
             /repo/app
+          mv bom-out/bom.cdx.json bom.cdx.json
           echo "SBOM generated -- component count:"
           cat bom.cdx.json | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
-      
       - name: Cache depscan vulnerability database
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: /tmp/vdb
-          key: depscan-vdb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          key: depscan-vdb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ steps.date.outputs.week }}
           restore-keys: |
+            depscan-vdb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-
             depscan-vdb-${{ runner.os }}-
 
       - name: Run depscan vulnerability scan
@@ -47,7 +54,7 @@ jobs:
         timeout-minutes: 8
         run: |
           mkdir -p reports /tmp/vdb && chmod 777 reports /tmp/vdb
-          timeout 420 docker run --rm \
+          timeout -k 30 420 docker run --rm --init \
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -v /tmp/vdb:/vdb \
@@ -58,14 +65,15 @@ jobs:
               --src /repo/app \
               --bom /repo/bom.cdx.json \
               --reports-dir /reports \
-              --no-vuln-table || true
+              --no-vuln-table
+          echo "depscan vulnerability scan exit code: $?"
 
       - name: Run depscan reachability analysis
         if: always()
         continue-on-error: true
         timeout-minutes: 10
         run: |
-          timeout 540 docker run --rm \
+          timeout -k 30 540 docker run --rm --init \
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -v /tmp/vdb:/vdb \
@@ -77,7 +85,9 @@ jobs:
               --src /repo/app \
               --bom /repo/bom.cdx.json \
               --reports-dir /reports \
-              --no-vuln-table || true
+              --no-vuln-table
+          echo "depscan reachability analysis exit code: $?"
+
       - name: Upload SBOM to Dependency-Track
         # autoCreate=true creates the project on first push, no manual setup needed.
         # Non-blocking: DT being unreachable does not fail the pipeline.
