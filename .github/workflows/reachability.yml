@@ -1,0 +1,82 @@
+name: Reachability Analysis
+on:
+  schedule:
+    # Runs nightly at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "run" to trigger a manual reachability scan'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reachability:
+    name: Depscan Reachability (atom)
+    if: github.event_name == 'schedule' || github.event.inputs.confirm == 'run'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set cache week
+        id: date
+        run: echo "week=$(date +%Y-%U)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache depscan vulnerability database
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: /tmp/vdb
+          key: depscan-vdb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ steps.date.outputs.week }}
+          restore-keys: |
+            depscan-vdb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-
+            depscan-vdb-${{ runner.os }}-
+
+      - name: Generate CycloneDX SBOM
+        # Regenerate the SBOM from current main so reachability reflects
+        # the latest code, not a stale artifact from a previous build.
+        run: |
+          mkdir -p bom-out && chmod 777 bom-out
+          docker run --rm --init \
+            -v "${{ github.workspace }}:/repo" \
+            -v "${{ github.workspace }}/bom-out:/out" \
+            -w /repo \
+            ghcr.io/cyclonedx/cdxgen@sha256:29babac410b88a53c8fa60038b1b9a5c26764ccb84942ca77863acf90c86e288 \
+            -t python --deep --evidence \
+            -o /out/bom.cdx.json \
+            /repo/app
+          mv bom-out/bom.cdx.json bom.cdx.json
+
+      - name: Run depscan reachability analysis
+        # Atom-based call graph analysis. Determines whether vulnerable functions
+        # are reachable from application entry points. Results uploaded to DT
+        # to enrich existing findings with exploitability context.
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          mkdir -p reports /tmp/vdb && chmod 777 reports /tmp/vdb
+          timeout -k 30 840 docker run --rm --init \
+            -v "${{ github.workspace }}:/repo" \
+            -v "${{ github.workspace }}/reports:/reports" \
+            -v /tmp/vdb:/vdb \
+            -e VDB_HOME=/vdb \
+            -w /repo \
+            ghcr.io/owasp-dep-scan/dep-scan@sha256:134b031d8d21a4769eb30adea61778fd6f9c6d9fc3af5d8f6a10c12ee1c22357 \
+              --profile research \
+              -t python \
+              --src /repo/app \
+              --bom /repo/bom.cdx.json \
+              --reports-dir /reports \
+              --no-vuln-table
+          echo "depscan reachability exit code: $?"
+
+      - name: Upload reachability report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reachability-${{ github.sha }}
+          path: reports/
+          retention-days: 30
