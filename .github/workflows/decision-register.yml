@@ -35,7 +35,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Need write access to commit the register back to the repo
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Authenticate to GCP
@@ -50,26 +49,29 @@ jobs:
 
       - name: Query Dependency-Track for findings
         id: dt-query
+        env:
+          DT_URL: ${{ secrets.DT_URL }}
+          DT_API_KEY: ${{ secrets.DT_API_KEY }}
+          INPUT_SHA: ${{ inputs.sha }}
         run: |
-          # Look up project by name and version (SHA)
           PROJECT=$(curl -s \
-            "${DT_URL}/api/v1/project?name=musaumakau%2Fsupply-chain-security&version=${{ inputs.sha }}" \
+            "${DT_URL}/api/v1/project?name=musaumakau%2Fsupply-chain-security&version=${INPUT_SHA}" \
             -H "X-Api-Key: ${DT_API_KEY}" \
             -H "Accept: application/json")
 
           PROJECT_UUID=$(echo "$PROJECT" | python3 -c "
-          import json, sys
+          import json, sys, os
           data = json.load(sys.stdin)
+          sha = os.environ['INPUT_SHA']
           projects = data if isinstance(data, list) else [data]
           for p in projects:
-              if p.get('version') == '${{ inputs.sha }}':
+              if p.get('version') == sha:
                   print(p['uuid'])
                   break
           ")
 
           echo "project_uuid=${PROJECT_UUID}" >> "$GITHUB_OUTPUT"
 
-          # Query metrics for this project
           METRICS=$(curl -s \
             "${DT_URL}/api/v1/metrics/project/${PROJECT_UUID}/current" \
             -H "X-Api-Key: ${DT_API_KEY}" \
@@ -91,38 +93,48 @@ jobs:
           echo "suppressed=${SUPPRESSED}" >> "$GITHUB_OUTPUT"
           echo "components=${COMPONENTS}" >> "$GITHUB_OUTPUT"
 
-          # Decision: ALLOWED if no critical or high unresolved findings
           if [ "$CRITICAL" -eq 0 ] && [ "$HIGH" -eq 0 ]; then
             echo "decision=ALLOWED" >> "$GITHUB_OUTPUT"
           else
             echo "decision=BLOCKED" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          DT_URL: ${{ secrets.DT_URL }}
-          DT_API_KEY: ${{ secrets.DT_API_KEY }}
 
       - name: Generate decision register
         id: generate-register
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+          INPUT_PIPELINE_URL: ${{ inputs.pipeline_url }}
+          INPUT_DIGEST: ${{ inputs.digest }}
+          ACTOR: ${{ github.actor }}
+          DT_DECISION: ${{ steps.dt-query.outputs.decision }}
+          DT_PROJECT_UUID: ${{ steps.dt-query.outputs.project_uuid }}
+          DT_COMPONENTS: ${{ steps.dt-query.outputs.components }}
+          DT_CRITICAL: ${{ steps.dt-query.outputs.critical }}
+          DT_HIGH: ${{ steps.dt-query.outputs.high }}
+          DT_MEDIUM: ${{ steps.dt-query.outputs.medium }}
+          DT_LOW: ${{ steps.dt-query.outputs.low }}
+          DT_TOTAL: ${{ steps.dt-query.outputs.findings_total }}
+          DT_SUPPRESSED: ${{ steps.dt-query.outputs.suppressed }}
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           EXPIRY=$(date -u -d "+90 days" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v+90d +"%Y-%m-%dT%H:%M:%SZ")
-          IMAGE_REF="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}"
+          IMAGE_REF="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${INPUT_DIGEST}"
 
           mkdir -p releases
 
-          cat > releases/decision-register-${{ inputs.sha }}.yaml << EOF
+          cat > "releases/decision-register-${INPUT_SHA}.yaml" << REGISTER
           apiVersion: supply-chain.devlan.co/v1
           kind: ReleaseDecision
 
           release:
-            sha: ${{ inputs.sha }}
+            sha: ${INPUT_SHA}
             image: ${IMAGE_REF}
             timestamp: ${TIMESTAMP}
-            pipeline: ${{ inputs.pipeline_url }}
+            pipeline: ${INPUT_PIPELINE_URL}
 
           decision:
-            status: ${{ steps.dt-query.outputs.decision }}
-            decided_by: ${{ github.actor }}
+            status: ${DT_DECISION}
+            decided_by: ${ACTOR}
             decided_at: ${TIMESTAMP}
             expiry: ${EXPIRY}
             revalidation_triggers:
@@ -132,35 +144,41 @@ jobs:
               - policy_change
 
           dependency_track:
-            project_uuid: ${{ steps.dt-query.outputs.project_uuid }}
-            project_version: ${{ inputs.sha }}
-            components: ${{ steps.dt-query.outputs.components }}
+            project_uuid: ${DT_PROJECT_UUID}
+            project_version: ${INPUT_SHA}
+            components: ${DT_COMPONENTS}
             findings:
-              critical: ${{ steps.dt-query.outputs.critical }}
-              high: ${{ steps.dt-query.outputs.high }}
-              medium: ${{ steps.dt-query.outputs.medium }}
-              low: ${{ steps.dt-query.outputs.low }}
-              total: ${{ steps.dt-query.outputs.findings_total }}
-              suppressed: ${{ steps.dt-query.outputs.suppressed }}
-          EOF
+              critical: ${DT_CRITICAL}
+              high: ${DT_HIGH}
+              medium: ${DT_MEDIUM}
+              low: ${DT_LOW}
+              total: ${DT_TOTAL}
+              suppressed: ${DT_SUPPRESSED}
+          REGISTER
 
           echo "Register generated:"
-          cat releases/decision-register-${{ inputs.sha }}.yaml
+          cat "releases/decision-register-${INPUT_SHA}.yaml"
+          echo "register_filename=releases/decision-register-${INPUT_SHA}.yaml" >> "$GITHUB_OUTPUT"
 
       - name: Attest decision register to image digest
         env:
           COSIGN_EXPERIMENTAL: "1"
           IMAGE_DIGEST: "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}"
+          REGISTER_FILE: ${{ steps.generate-register.outputs.register_filename }}
         run: |
           cosign attest --yes \
-            --predicate releases/decision-register-${{ inputs.sha }}.yaml \
+            --predicate "${REGISTER_FILE}" \
             --type https://supply-chain.devlan.co/decision-register/v1 \
             "${IMAGE_DIGEST}"
 
       - name: Commit decision register to repo
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+          DT_DECISION: ${{ steps.dt-query.outputs.decision }}
+          REGISTER_FILE: ${{ steps.generate-register.outputs.register_filename }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add releases/decision-register-${{ inputs.sha }}.yaml
-          git commit -m "release decision: ${{ inputs.sha }} [${{ steps.dt-query.outputs.decision }}]"
+          git add "${REGISTER_FILE}"
+          git commit -m "release decision: ${INPUT_SHA} [${DT_DECISION}]"
           git push
