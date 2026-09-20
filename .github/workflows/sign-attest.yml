@@ -78,7 +78,7 @@ jobs:
           echo "Attaching CycloneDX SBOM attestation to: ${IMAGE_DIGEST}"
           cosign attest --yes \
             --predicate sbom.cdx.json \
-            --type cyclonedxjson \
+            --type https://cyclonedx.org/bom \
             "${IMAGE_DIGEST}"
 
       - name: Generate and attest provenance
