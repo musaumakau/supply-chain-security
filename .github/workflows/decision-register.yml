@@ -122,6 +122,63 @@ jobs:
 
           mkdir -p releases
 
+          # Generate JSON for cosign attestation (properly escaped via jq)
+          jq -n \
+            --arg sha "$INPUT_SHA" \
+            --arg image "$IMAGE_REF" \
+            --arg timestamp "$TIMESTAMP" \
+            --arg pipeline "$INPUT_PIPELINE_URL" \
+            --arg decision "$DT_DECISION" \
+            --arg actor "$ACTOR" \
+            --arg expiry "$EXPIRY" \
+            --arg project_uuid "$DT_PROJECT_UUID" \
+            --argjson components "$DT_COMPONENTS" \
+            --argjson critical "$DT_CRITICAL" \
+            --argjson high "$DT_HIGH" \
+            --argjson medium "$DT_MEDIUM" \
+            --argjson low "$DT_LOW" \
+            --argjson total "$DT_TOTAL" \
+            --argjson suppressed "$DT_SUPPRESSED" \
+            '{
+              apiVersion: "supply-chain.devlan.co/v1",
+              kind: "ReleaseDecision",
+              release: {
+                sha: $sha,
+                image: $image,
+                timestamp: $timestamp,
+                pipeline: $pipeline
+              },
+              decision: {
+                status: $decision,
+                decided_by: $actor,
+                decided_at: $timestamp,
+                expiry: $expiry,
+                revalidation_triggers: [
+                  "new_cve_for_component",
+                  "vex_expiry",
+                  "base_image_change",
+                  "policy_change"
+                ]
+              },
+              dependency_track: {
+                project_uuid: $project_uuid,
+                project_version: $sha,
+                components: $components,
+                findings: {
+                  critical: $critical,
+                  high: $high,
+                  medium: $medium,
+                  low: $low,
+                  total: $total,
+                  suppressed: $suppressed
+                }
+              }
+            }' > "releases/decision-register-${INPUT_SHA}.json"
+
+          echo "JSON register generated:"
+          cat "releases/decision-register-${INPUT_SHA}.json"
+
+          # Also generate YAML version for repo readability
           cat > "releases/decision-register-${INPUT_SHA}.yaml" << REGISTER
           apiVersion: supply-chain.devlan.co/v1
           kind: ReleaseDecision
@@ -156,9 +213,7 @@ jobs:
               suppressed: ${DT_SUPPRESSED}
           REGISTER
 
-          echo "Register generated:"
-          cat "releases/decision-register-${INPUT_SHA}.yaml"
-          echo "register_filename=releases/decision-register-${INPUT_SHA}.yaml" >> "$GITHUB_OUTPUT"
+          echo "register_filename=releases/decision-register-${INPUT_SHA}.json" >> "$GITHUB_OUTPUT"
 
       - name: Attest decision register to image digest
         env:
@@ -175,10 +230,9 @@ jobs:
         env:
           INPUT_SHA: ${{ inputs.sha }}
           DT_DECISION: ${{ steps.dt-query.outputs.decision }}
-          REGISTER_FILE: ${{ steps.generate-register.outputs.register_filename }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${REGISTER_FILE}"
+          git add releases/decision-register-${INPUT_SHA}.*
           git commit -m "release decision: ${INPUT_SHA} [${DT_DECISION}]"
           git push
