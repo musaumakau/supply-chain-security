@@ -233,7 +233,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "releases/decision-register-${INPUT_SHA}"
+          # Stage the file first while still on the current branch
           git add "releases/decision-register-${INPUT_SHA}.yaml"
+          # Now create and switch to the releases branch
+          git checkout -b "releases/decision-register-${INPUT_SHA}"
           git commit -m "release decision: ${INPUT_SHA} [${DT_DECISION}]"
           git push origin "releases/decision-register-${INPUT_SHA}"
