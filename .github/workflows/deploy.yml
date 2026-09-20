@@ -15,40 +15,31 @@ on:
         required: true
         type: string
 
-# Prevent overlapping deploy runs from racing to sign/attest against
-# the same or adjacent commits. Queue rather than cancel, since killing
-# a signing operation mid-flight could leave a partially-attested image.
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   security-events: write
 
 jobs:
   build-push:
     name: Build and Push
-    # On a real push this always runs. On workflow_dispatch (e.g. re-signing
-    # after a Sigstore outage), it only runs if the confirm input matches --
-    # a one-click "Run workflow" button with no guard would let anyone with
-    # write access silently trigger a full rebuild-and-resign.
     if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
     uses: ./.github/workflows/build-push.yml
     with:
       image-tag: ${{ github.sha }}
       push: true
 
-
   sbom-vex:
     name: SBOM and VEX (non-blocking)
     if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
     uses: ./.github/workflows/sbom-vex.yml
-    secrets: 
+    secrets:
       DT_URL: ${{ secrets.DT_URL }}
       DT_API_KEY: ${{ secrets.DT_API_KEY }}
-      
 
   sign-attest:
     name: Sign and Attest
@@ -56,7 +47,6 @@ jobs:
     uses: ./.github/workflows/sign-attest.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
-  
 
   verify:
     name: Verify
@@ -64,3 +54,15 @@ jobs:
     uses: ./.github/workflows/verify.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
+
+  decision-register:
+    name: Decision Register
+    needs: [build-push, verify, sbom-vex]
+    uses: ./.github/workflows/decision-register.yml
+    with:
+      digest: ${{ needs.build-push.outputs.digest }}
+      sha: ${{ github.sha }}
+      pipeline_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    secrets:
+      DT_URL: ${{ secrets.DT_URL }}
+      DT_API_KEY: ${{ secrets.DT_API_KEY }}
