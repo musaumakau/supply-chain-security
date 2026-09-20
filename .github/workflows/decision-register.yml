@@ -230,7 +230,6 @@ jobs:
         env:
           INPUT_SHA: ${{ inputs.sha }}
           DT_DECISION: ${{ steps.dt-query.outputs.decision }}
-          REGISTER_FILE: ${{ steps.generate-register.outputs.register_filename }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
