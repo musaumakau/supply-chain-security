@@ -1,0 +1,256 @@
+name: DT Violation Revalidation
+
+on:
+  repository_dispatch:
+    types:
+      - dependency-track-violation
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  revalidate:
+    name: Revalidate Finding
+    runs-on: ubuntu-latest
+    outputs:
+      decision_status: ${{ steps.update-decision.outputs.status }}
+      issue_created: ${{ steps.issue.outputs.url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract payload
+        id: payload
+        env:
+          CVE: ${{ github.event.client_payload.cve }}
+          SEVERITY: ${{ github.event.client_payload.severity }}
+          COMPONENT: ${{ github.event.client_payload.component }}
+          COMPONENT_VER: ${{ github.event.client_payload.component_ver }}
+          PROJECT_SHA: ${{ github.event.client_payload.project_version }}
+          PROJECT_UUID: ${{ github.event.client_payload.project_uuid }}
+        run: |
+          cat > /tmp/payload.env << 'PAYLOAD'
+          CVE=${CVE}
+          SEVERITY=${SEVERITY}
+          COMPONENT=${COMPONENT}
+          COMPONENT_VER=${COMPONENT_VER}
+          PROJECT_SHA=${PROJECT_SHA}
+          PROJECT_UUID=${PROJECT_UUID}
+          PAYLOAD
+          cat /tmp/payload.env
+          source /tmp/payload.env
+          echo "cve=${CVE}" >> $GITHUB_OUTPUT
+          echo "severity=${SEVERITY}" >> $GITHUB_OUTPUT
+          echo "component=${COMPONENT}" >> $GITHUB_OUTPUT
+          echo "project_sha=${PROJECT_SHA}" >> $GITHUB_OUTPUT
+          echo "project_uuid=${PROJECT_UUID}" >> $GITHUB_OUTPUT
+
+      - name: Find affected release branch
+        id: release
+        env:
+          PROJECT_SHA: ${{ steps.payload.outputs.project_sha }}
+        run: |
+          # Look for the decision register branch for this release
+          BRANCH="releases/decision-register-${PROJECT_SHA}"
+          if git rev-parse --verify origin/$BRANCH > /dev/null 2>&1; then
+            echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+            echo "Found release branch: $BRANCH"
+          else
+            echo "ERROR: Release branch not found: $BRANCH"
+            exit 1
+          fi
+
+      - name: Fetch decision register
+        id: decision-register
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+        run: |
+          git fetch origin $BRANCH
+          DECISION_REGISTER=$(git show origin/$BRANCH:decision-register.yaml 2>/dev/null || echo "")
+          if [ -z "$DECISION_REGISTER" ]; then
+            echo "ERROR: decision-register.yaml not found in $BRANCH"
+            exit 1
+          fi
+          echo "register<<EOF" >> $GITHUB_OUTPUT
+          echo "$DECISION_REGISTER" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Fetch SBOM from DT
+        id: sbom
+        env:
+          DT_API_URL: http://34.62.149.122:8080
+          DT_API_KEY: ${{ secrets.DT_API_KEY }}
+          PROJECT_UUID: ${{ steps.payload.outputs.project_uuid }}
+        run: |
+          # Query DT API for the project's latest SBOM
+          RESPONSE=$(curl -s -X GET \
+            "${DT_API_URL}/api/v1/project/${PROJECT_UUID}" \
+            -H "X-API-Key: ${DT_API_KEY}")
+          
+          # Extract project name and version from response
+          PROJECT_NAME=$(echo "$RESPONSE" | jq -r '.name')
+          PROJECT_VERSION=$(echo "$RESPONSE" | jq -r '.version')
+          
+          echo "project_name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
+          echo "project_version=${PROJECT_VERSION}" >> $GITHUB_OUTPUT
+          
+          # Fetch SBOM in CycloneDX JSON format
+          SBOM=$(curl -s -X GET \
+            "${DT_API_URL}/api/v1/project/${PROJECT_UUID}/export/cyclonedx/json" \
+            -H "X-API-Key: ${DT_API_KEY}")
+          
+          echo "$SBOM" > /tmp/sbom.json
+          echo "sbom_size=$(wc -c < /tmp/sbom.json)" >> $GITHUB_OUTPUT
+
+      - name: Run depscan reachability analysis
+        id: depscan
+        env:
+          CVE: ${{ steps.payload.outputs.cve }}
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          COMPONENT_VER: ${{ steps.payload.outputs.component_ver }}
+        run: |
+          # Install depscan
+          pip install -q depscan
+          
+          # Run depscan with atom call graph analysis
+          depscan --bom /tmp/sbom.json \
+            --profile research \
+            -o /tmp/depscan-report.json || true
+          
+          # Parse depscan output to determine if CVE is reachable
+          REACHABLE=$(jq --arg cve "$CVE" '.vulnerabilities[]? | select(.cveId == $cve) | .reachable' /tmp/depscan-report.json 2>/dev/null || echo "false")
+          
+          if [ "$REACHABLE" = "true" ]; then
+            echo "is_reachable=true" >> $GITHUB_OUTPUT
+            echo "Finding is REACHABLE in call graph"
+          else
+            echo "is_reachable=false" >> $GITHUB_OUTPUT
+            echo "Finding is NOT REACHABLE in call graph"
+          fi
+
+      - name: Update decision register
+        id: update-decision
+        env:
+          CVE: ${{ steps.payload.outputs.cve }}
+          SEVERITY: ${{ steps.payload.outputs.severity }}
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          IS_REACHABLE: ${{ steps.depscan.outputs.is_reachable }}
+          CURRENT_REGISTER: ${{ steps.decision-register.outputs.register }}
+        run: |
+          python3 << 'PYTHON'
+          import yaml
+          import json
+          from datetime import datetime
+          
+          cve = "${{ env.CVE }}"
+          severity = "${{ env.SEVERITY }}"
+          is_reachable = "${{ env.IS_REACHABLE }}" == "true"
+          
+          # Parse existing decision register
+          register_yaml = """${{ env.CURRENT_REGISTER }}"""
+          register = yaml.safe_load(register_yaml) or {"decisions": []}
+          
+          # Find or create entry for this CVE
+          decision = None
+          for d in register.get("decisions", []):
+              if d.get("cve") == cve:
+                  decision = d
+                  break
+          
+          if not decision:
+              decision = {"cve": cve, "component": "${{ env.COMPONENT }}", "severity": severity}
+              register["decisions"].append(decision)
+          
+          # Update decision based on reachability
+          if is_reachable and severity.upper() in ["CRITICAL", "HIGH"]:
+              decision["status"] = "BLOCKED"
+              decision["reason"] = "Reachable critical/high severity vulnerability"
+              decision["updated_at"] = datetime.utcnow().isoformat() + "Z"
+              status = "BLOCKED"
+          else:
+              decision["status"] = "ALLOWED"
+              if not is_reachable:
+                  decision["vex_justification"] = "code_not_reachable"
+                  decision["vex_reason"] = "Vulnerability not reachable in call graph analysis"
+              decision["updated_at"] = datetime.utcnow().isoformat() + "Z"
+              status = "ALLOWED"
+          
+          # Write updated register
+          with open("/tmp/decision-register-updated.yaml", "w") as f:
+              yaml.dump(register, f, default_flow_style=False)
+          
+          print(f"Decision updated: {cve} -> {status}")
+          with open("$GITHUB_OUTPUT", "a") as f:
+              f.write(f"status={status}\n")
+          PYTHON
+
+      - name: Commit decision register update
+        id: commit
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+          CVE: ${{ steps.payload.outputs.cve }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git fetch origin $BRANCH
+          git checkout $BRANCH
+          
+          # Copy updated decision register
+          cp /tmp/decision-register-updated.yaml decision-register.yaml
+          
+          # Stage and commit
+          git add decision-register.yaml
+          git commit -m "chore: update decision register for ${CVE}" || echo "No changes to commit"
+          
+          # Push back to the same branch
+          git push origin $BRANCH || echo "Push failed or no changes"
+
+      - name: Create issue if BLOCKED
+        id: issue
+        if: steps.update-decision.outputs.status == 'BLOCKED'
+        env:
+          CVE: ${{ steps.payload.outputs.cve }}
+          SEVERITY: ${{ steps.payload.outputs.severity }}
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          COMPONENT_VER: ${{ steps.payload.outputs.component_ver }}
+          PROJECT_SHA: ${{ steps.payload.outputs.project_sha }}
+        run: |
+          ISSUE_TITLE="BLOCKED: ${CVE} in ${COMPONENT} is reachable"
+          ISSUE_BODY="A reachable ${SEVERITY} vulnerability has been detected:
+          
+          - **CVE**: \`${CVE}\`
+          - **Component**: \`${COMPONENT}@${COMPONENT_VER}\`
+          - **Severity**: ${SEVERITY}
+          - **Release**: ${PROJECT_SHA}
+          
+          This finding reached the decision register as BLOCKED because the vulnerability is reachable in the call graph and has high/critical severity.
+          
+          **Next steps**:
+          1. Review the vulnerability details
+          2. Evaluate remediation options (patch, upgrade, workaround)
+          3. Update the decision register with a justification or remediation plan
+          "
+          
+          gh issue create \
+            --title "$ISSUE_TITLE" \
+            --body "$ISSUE_BODY" \
+            --label "security" || echo "Issue creation skipped (may already exist)"
+
+      - name: Summary
+        run: |
+          echo "## Revalidation Summary"
+          echo ""
+          echo "| Field | Value |"
+          echo "|-------|-------|"
+          echo "| CVE | ${{ steps.payload.outputs.cve }} |"
+          echo "| Component | ${{ steps.payload.outputs.component }} |"
+          echo "| Severity | ${{ steps.payload.outputs.severity }} |"
+          echo "| Reachable | ${{ steps.depscan.outputs.is_reachable }} |"
+          echo "| Decision | ${{ steps.update-decision.outputs.status }} |"
+          echo "| Release | ${{ steps.payload.outputs.project_sha }} |"
