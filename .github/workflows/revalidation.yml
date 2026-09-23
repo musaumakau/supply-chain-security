@@ -146,7 +146,6 @@ jobs:
         run: |
           python3 << 'PYTHON'
           import yaml
-          import json
           from datetime import datetime
           
           cve = "${{ env.CVE }}"
@@ -155,31 +154,24 @@ jobs:
           
           # Parse existing decision register
           register_yaml = """${{ env.CURRENT_REGISTER }}"""
-          register = yaml.safe_load(register_yaml) or {"decisions": []}
+          register = yaml.safe_load(register_yaml) or {}
           
-          # Find or create entry for this CVE
-          decision = None
-          for d in register.get("decisions", []):
-              if d.get("cve") == cve:
-                  decision = d
-                  break
+          # Update the decision field based on reachability
+          if not "decision" in register:
+              register["decision"] = {}
           
-          if not decision:
-              decision = {"cve": cve, "component": "${{ env.COMPONENT }}", "severity": severity}
-              register["decisions"].append(decision)
-          
-          # Update decision based on reachability
           if is_reachable and severity.upper() in ["CRITICAL", "HIGH"]:
-              decision["status"] = "BLOCKED"
-              decision["reason"] = "Reachable critical/high severity vulnerability"
-              decision["updated_at"] = datetime.utcnow().isoformat() + "Z"
+              register["decision"]["status"] = "BLOCKED"
+              register["decision"]["reason"] = "Reachable critical/high severity vulnerability"
+              register["decision"]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+              register["decision"]["cve"] = cve
               status = "BLOCKED"
           else:
-              decision["status"] = "ALLOWED"
+              register["decision"]["status"] = "ALLOWED"
               if not is_reachable:
-                  decision["vex_justification"] = "code_not_reachable"
-                  decision["vex_reason"] = "Vulnerability not reachable in call graph analysis"
-              decision["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                  register["decision"]["vex_justification"] = "code_not_reachable"
+              register["decision"]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+              register["decision"]["cve"] = cve
               status = "ALLOWED"
           
           # Write updated register
