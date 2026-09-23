@@ -63,17 +63,19 @@ jobs:
           else
             echo "ERROR: Release branch not found: $BRANCH"
             exit 1
+            
           fi
 
       - name: Fetch decision register
         id: decision-register
         env:
           BRANCH: ${{ steps.release.outputs.branch }}
+          PROJECT_SHA: ${{ steps.payload.outputs.project_sha }}
         run: |
           git fetch origin $BRANCH
-          DECISION_REGISTER=$(git show origin/$BRANCH:decision-register.yaml 2>/dev/null || echo "")
+          DECISION_REGISTER=$(git show origin/$BRANCH:releases/decision-register-${PROJECT_SHA}.yaml 2>/dev/null || echo "")
           if [ -z "$DECISION_REGISTER" ]; then
-            echo "ERROR: decision-register.yaml not found in $BRANCH"
+            echo "ERROR: decision-register YAML not found in $BRANCH"
             exit 1
           fi
           echo "register<<EOF" >> $GITHUB_OUTPUT
