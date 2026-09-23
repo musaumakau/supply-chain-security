@@ -10,10 +10,6 @@ permissions:
   id-token: write
   issues: write
 
-env:
-  DT_API_URL: http://34.62.149.122:8080
-  DT_API_KEY: ${{ secrets.DT_API_KEY }}
-
 jobs:
   revalidate:
     name: Revalidate Finding
@@ -24,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@e8d4307400f9427dba7cb98e488d6ab85f1cec5f
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -87,6 +83,8 @@ jobs:
       - name: Fetch SBOM from DT
         id: sbom
         env:
+          DT_API_URL: http://34.62.149.122:8080
+          DT_API_KEY: ${{ secrets.DT_API_KEY }}
           PROJECT_UUID: ${{ steps.payload.outputs.project_uuid }}
         run: |
           # Query DT API for the project's latest SBOM
