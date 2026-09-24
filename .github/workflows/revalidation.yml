@@ -205,6 +205,11 @@ jobs:
           # Push back to the same branch
           git push origin $BRANCH || echo "Push failed or no changes"
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
+        with:
+            cosign-release: 'v2.2.0'     
+
 
       - name: Attest decision register to image
         env:
