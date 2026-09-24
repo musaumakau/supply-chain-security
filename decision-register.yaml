@@ -1,0 +1,31 @@
+apiVersion: supply-chain.devlan.co/v1
+decision:
+  cve: CVE-2026-54321
+  decided_at: 2026-09-20 16:39:57+00:00
+  decided_by: musaumakau
+  expiry: 2026-12-19 16:39:57+00:00
+  revalidation_triggers:
+  - new_cve_for_component
+  - vex_expiry
+  - base_image_change
+  - policy_change
+  status: ALLOWED
+  updated_at: '2026-09-24T00:02:05.540687Z'
+  vex_justification: code_not_reachable
+dependency_track:
+  components: 19
+  findings:
+    critical: 0
+    high: 0
+    low: 0
+    medium: 0
+    suppressed: 0
+    total: 0
+  project_uuid: c2eed204-d2b0-4336-bd95-8f616994e5d9
+  project_version: 7255e3b318093e57d3dc59edad50d910e257e460
+kind: ReleaseDecision
+release:
+  image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo@sha256:bec4dbcb9b243b64121ab6f09b52e5dbd6c5fccf26682dbed7a2682ddfa5d7e3
+  pipeline: https://github.com/musaumakau/supply-chain-security/actions/runs/35523193044
+  sha: 7255e3b318093e57d3dc59edad50d910e257e460
+  timestamp: 2026-09-20 16:39:57+00:00
