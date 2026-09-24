@@ -19,6 +19,7 @@
 set -euo pipefail
 
 CANONICAL_SUFFIX="sign-attest.yml@refs/heads/main"
+REVALIDATION_SUFFIX="revalidation.yml@refs/heads/main"
 CANONICAL_ENTRYPOINT="\.github/workflows/sign-attest\.yml"
 FAIL=0
 
@@ -34,10 +35,10 @@ check_full_identity() {
   fi
 
   while IFS= read -r m; do
-    if [[ "$m" == *"$CANONICAL_SUFFIX" ]]; then
+    if [[ "$m" == *"$CANONICAL_SUFFIX" ]] || [[ "$m" == *"$REVALIDATION_SUFFIX" ]]; then
       echo "OK    $file -> $m"
     else
-      echo "FAIL  $file -> $m  (expected suffix: $CANONICAL_SUFFIX)"
+      echo "FAIL  $file -> $m  (expected suffix: $CANONICAL_SUFFIX or $REVALIDATION_SUFFIX)"
       FAIL=1
     fi
   done <<< "$matches"
@@ -66,6 +67,7 @@ check_entrypoint_value() {
 
 echo "--- Checking full identity references (subject / certificateIdentity / CERT_IDENTITY) ---"
 check_full_identity policy/kyverno/block-unsigned-images.yaml
+check_full_identity policy/kyverno/verify-decision-register.yaml
 check_full_identity policy/gatekeeper/verifier-cosign.yaml
 check_full_identity .github/workflows/verify.yml
 
@@ -75,9 +77,10 @@ check_entrypoint_value policy/kyverno/block-unsigned-images.yaml
 
 echo ""
 if [ "$FAIL" -ne 0 ]; then
-  echo "One or more files reference a certificate identity other than sign-attest.yml."
-  echo "Only sign-attest.yml actually signs/attests images -- every verifier must"
-  echo "check against that exact workflow, or verification will always fail."
+  echo "One or more files reference a certificate identity other than sign-attest.yml or revalidation.yml."
+  echo "sign-attest.yml signs base image attestations (signature, SBOM, provenance)."
+  echo "revalidation.yml attests the decision register predicate."
+  echo "Every verifier must check against the correct workflow for that attestation type."
   exit 1
 fi
 
