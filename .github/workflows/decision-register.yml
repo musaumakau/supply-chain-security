@@ -37,12 +37,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to GCP
         uses: ./.github/actions/gcp-auth
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SA_EMAIL }}
-          registry: europe-west1-docker.pkg.dev
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
       - name: Setup Cosign
         uses: ./.github/actions/setup-cosign
