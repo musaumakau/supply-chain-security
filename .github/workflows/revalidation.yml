@@ -6,7 +6,7 @@ on:
       - dependency-track-violation
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   issues: write
 
