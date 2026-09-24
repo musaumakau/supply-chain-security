@@ -205,6 +205,14 @@ jobs:
           # Push back to the same branch
           git push origin $BRANCH || echo "Push failed or no changes"
 
+
+      - name: Authenticate to Google Cloud
+        uses: ./.github/actions/gcp-auth
+        with:
+            workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+            service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+            registry: europe-west1-docker.pkg.dev
+
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
         with:
