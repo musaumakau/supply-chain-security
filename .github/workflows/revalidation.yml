@@ -206,12 +206,12 @@ jobs:
           git push origin $BRANCH || echo "Push failed or no changes"
 
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to GCP
         uses: ./.github/actions/gcp-auth
         with:
-            workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-            service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-            registry: europe-west1-docker.pkg.dev
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
