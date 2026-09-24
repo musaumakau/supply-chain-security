@@ -73,8 +73,6 @@ spec:
                       operator: Equals
                       value: "ALLOWED"
 
-              mutateDigest: false
-              verifyDigest: true
-              required: true
+              
 
 
