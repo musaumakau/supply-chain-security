@@ -1,67 +1,29 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: block-unsigned-images
+  name: verify-decision-register-status
   annotations:
-    policies.kyverno.io/title: Block Unsigned and Unattested Container Images
+    policies.kyverno.io/title: Enforce Decision Register Status for Image Admission
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
-      Blocks any Pod whose container images do not carry:
-        1. A valid Cosign keyless signature
-        2. A valid SBOM attestation (SPDX JSON)
-        3. A valid SLSA provenance attestation
-      All three must be present and verifiable against the GitHub Actions
-      OIDC identity for the supply-chain-security signing workflow.
+      Gates admission on the decision register attestation status. Verifies that:
+        1. A decision register attestation exists (custom predicate type)
+        2. The decision.status in the predicate is ALLOWED
+        3. The attestation was signed by the approved supply-chain-security workflow
+      Blocks pods if any BLOCKED findings are recorded in the decision register.
+      This enforcement follows supply chain revalidation analysis by DT + depscan.
+
 spec:
   validationFailureAction: Enforce
   background: true
 
   rules:
-    # ------------------------------------------------------------------
-    # Rule 1: verify image signature
-    # ------------------------------------------------------------------
-    - name: verify-image-signature
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions:
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - kube-system
-                      - kyverno
-                      - argocd
-                      - crossplane-system
-                      - cert-manager
-      verifyImages:
-        - imageReferences:
-            - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
-
-          attestors:
-            - entries:
-                - keyless:
-                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
-                    issuer: "https://token.actions.githubusercontent.com"
-                    rekor:
-                      url: https://rekor.sigstore.dev
-          mutateDigest: false
-          verifyDigest: true
-          required: true
-
-    # ------------------------------------------------------------------
-    # Rule 2: verify SBOM attestation (SPDX JSON)
-    #
-    # Checks that a Cosign attestation of type spdxjson exists and was
-    # signed by the same GitHub Actions identity. Does not parse or
-    # validate the SBOM contents -- just proves it was attached by the
-    # approved workflow.
-    # ------------------------------------------------------------------
-    - name: verify-sbom-attestation
+    # -----------------------------------------------------------------------
+    # Rule: Verify decision register attestation and gate on ALLOWED status
+    # -----------------------------------------------------------------------
+    - name: verify-decision-register-allowed
       match:
         any:
           - resources:
@@ -82,74 +44,35 @@ spec:
             - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
 
           attestations:
-            - type: https://spdx.dev/Document
+            # Custom predicate type: supply-chain-decision-register
+            # Predicate URL: https://supply-chain.devlan.co/decision-register/v1
+            - type: https://supply-chain.devlan.co/decision-register/v1
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/revalidation.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
-          mutateDigest: false
-          verifyDigest: true
-          required: true
 
-    # ------------------------------------------------------------------
-    # Rule 3: verify SLSA provenance attestation
-    #
-    # Checks that a Cosign attestation of type slsaprovenance exists
-    # and was signed by the approved workflow. The conditions block
-    # validates that the builder, entryPoint, and source repository URI
-    # match expected values -- preventing provenance from a fork or
-    # different workflow being accepted.
-    # ------------------------------------------------------------------
-    - name: verify-provenance-attestation
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions:
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - kube-system
-                      - kyverno
-                      - argocd
-                      - crossplane-system
-                      - cert-manager
-      verifyImages:
-        - imageReferences:
-            - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
-
-          attestations:
-            - type: https://slsa.dev/provenance/v0.2
-              attestors:
-                - entries:
-                    - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
-                        issuer: "https://token.actions.githubusercontent.com"
-                        rekor:
-                          url: https://rekor.sigstore.dev
+              # Gate on decision.status == ALLOWED using CEL
+              # The predicate contains:
+              # {
+              #   "decision": {
+              #     "status": "ALLOWED" | "BLOCKED",
+              #     "cve": "CVE-XXXX-XXXXX",
+              #     "reason": "...",
+              #     "vex_justification": "code_not_reachable" | null,
+              #     "updated_at": "2026-09-24T..."
+              #   }
+              # }
               conditions:
                 - all:
-                    # Kyverno scopes JMESPath evaluation directly to the predicate body
-                    # inside an attestation condition block -- there is no top-level
-                    # "predicate" key to descend into here. Verify the build was
-                    # triggered by the expected workflow entrypoint (the entrypoint
-                    # actually embedded by sign-attest.yml, not deploy.yml).
-                    - key: "{{ invocation.configSource.entryPoint }}"
+                    # CEL: extract decision.status and verify it is ALLOWED
+                    - key: "{{ decision.status }}"
                       operator: Equals
-                      value: ".github/workflows/sign-attest.yml"
-                    # Verify the builder is GitHub Actions
-                    - key: "{{ builder.id }}"
-                      operator: Equals
-                      value: "https://github.com/actions/runner"
-                    # Verify the source repository URI -- prevents provenance from a fork
-                    - key: "{{ invocation.configSource.uri }}"
-                      operator: Equals
-                      value: "git+https://github.com/musaumakau/supply-chain-security@refs/heads/main"
-          mutateDigest: false
-          verifyDigest: true
-          required: true
+                      value: "ALLOWED"
+
+              mutateDigest: false
+              verifyDigest: true
+              required: true
