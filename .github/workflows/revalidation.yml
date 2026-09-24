@@ -222,7 +222,7 @@ jobs:
             cosign-release: 'v3.0.3'   
 
       - name: Get image digest
-        id: digest
+        id: image-digest
         env:
           GAR_REGISTRY: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security
           IMAGE_NAME: supply-chain-demo
@@ -234,18 +234,6 @@ jobs:
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
 
-
-      - name: Get image digest
-        id: digest
-        env:
-          GAR_REGISTRY: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security
-          IMAGE_NAME: supply-chain-demo
-          PROJECT_SHA: ${{ steps.payload.outputs.project_sha }}
-        run: |
-          DIGEST=$(gcloud container images describe \
-            "${GAR_REGISTRY}/${IMAGE_NAME}:${PROJECT_SHA}" \
-            --format='get(image_summary.digest)')
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
 
       - name: Attest decision register to image
@@ -260,7 +248,7 @@ jobs:
           COMPONENT: ${{ steps.payload.outputs.component }}
         run: |
           # Build image reference using git SHA as tag
-            IMAGE_DIGEST="${GAR_REGISTRY}/${IMAGE_NAME}@${{ steps.digest.outputs.digest }}"
+            IMAGE_DIGEST="${GAR_REGISTRY}/${IMAGE_NAME}@${{ steps.image-digest.outputs.digest }}"
           
           # Create the decision register predicate JSON
           PREDICATE=$(python3 << 'PYTHON'
