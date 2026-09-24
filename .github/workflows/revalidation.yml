@@ -208,7 +208,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
         with:
-            cosign-release: 'v2.2.0'     
+            cosign-release: 'v3.0.5'  # Change from v2.2.0 to v3.0.5    
 
 
       - name: Attest decision register to image
