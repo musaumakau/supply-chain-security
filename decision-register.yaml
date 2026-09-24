@@ -10,7 +10,7 @@ decision:
   - base_image_change
   - policy_change
   status: ALLOWED
-  updated_at: '2026-09-24T13:10:27.644702Z'
+  updated_at: '2026-09-24T13:30:44.772400Z'
   vex_justification: code_not_reachable
 dependency_track:
   components: 19
