@@ -222,7 +222,7 @@ jobs:
             cosign-release: 'v3.0.3'   
 
       - name: Get image digest
-        id: digest
+        id: image-digest
         env:
           GAR_REGISTRY: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security
           IMAGE_NAME: supply-chain-demo
@@ -260,7 +260,7 @@ jobs:
           COMPONENT: ${{ steps.payload.outputs.component }}
         run: |
           # Build image reference using git SHA as tag
-            IMAGE_DIGEST="${GAR_REGISTRY}/${IMAGE_NAME}@${{ steps.digest.outputs.digest }}"
+            IMAGE_DIGEST="${GAR_REGISTRY}/${IMAGE_NAME}@${{ steps.image-digest.outputs.digest }}"
           
           # Create the decision register predicate JSON
           PREDICATE=$(python3 << 'PYTHON'
