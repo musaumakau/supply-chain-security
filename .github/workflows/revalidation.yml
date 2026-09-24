@@ -252,7 +252,7 @@ jobs:
           # Attest with cosign using custom predicate type
           cosign attest \
             --predicate /tmp/decision-register-predicate.json \
-            --predicate-type "https://supply-chain.devlan.co/decision-register/v1" \
+            --type "https://supply-chain.devlan.co/decision-register/v1" \
             "${IMAGE_DIGEST}"
           
           echo "Decision register attested to ${IMAGE_DIGEST}" 
