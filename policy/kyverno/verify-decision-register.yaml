@@ -20,9 +20,6 @@ spec:
   background: true
 
   rules:
-    # -----------------------------------------------------------------------
-    # Rule: Verify decision register attestation and gate on ALLOWED status
-    # -----------------------------------------------------------------------
     - name: verify-decision-register-allowed
       match:
         any:
@@ -44,8 +41,6 @@ spec:
             - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
 
           attestations:
-            # Custom predicate type: supply-chain-decision-register
-            # Predicate URL: https://supply-chain.devlan.co/decision-register/v1
             - type: https://supply-chain.devlan.co/decision-register/v1
               attestors:
                 - entries:
@@ -54,25 +49,8 @@ spec:
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
-
-              # Gate on decision.status == ALLOWED using CEL
-              # The predicate contains:
-              # {
-              #   "decision": {
-              #     "status": "ALLOWED" | "BLOCKED",
-              #     "cve": "CVE-XXXX-XXXXX",
-              #     "reason": "...",
-              #     "vex_justification": "code_not_reachable" | null,
-              #     "updated_at": "2026-09-24T..."
-              #   }
-              # }
-              conditions:
+               
                 - all:
-                    # CEL: extract decision.status and verify it is ALLOWED
                     - key: "{{ decision.status }}"
                       operator: Equals
                       value: "ALLOWED"
-
-              
-
-
